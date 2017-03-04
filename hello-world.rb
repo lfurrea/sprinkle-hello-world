@@ -4,8 +4,10 @@
 #/ This is how you do things 
 
 $stderr.sync = true
-require 'facter'
-require_relative 'config'
+
+%w(config coturn).each do |lib|
+  require_relative lib
+end
 
 file = __FILE__
 ssh_dir = File.join('/home', "#{USER}", '.ssh')
@@ -26,14 +28,18 @@ end
 
 ssh_keys_values = ssh_keys.split
 
+package :install_epel_release do
+  yum 'epel-release'
+  verify {has_yum 'epel-release'}
+end
+
 package :install_fail2ban do
-  apt 'fail2ban'
-  verify { has_apt 'fail2ban' }
+  yum 'fail2ban'
+  verify { has_yum 'fail2ban' }
 end
 
 package :deploy_user do
-  add_user 'deploy', :flags => '--disabled-password'
-
+  add_user 'deploy'
   verify { has_user 'deploy' } 
 end
 
@@ -58,7 +64,7 @@ package :deploy_ssh_keys do
 end
 
 package :passwordless_sudo do
-  requires :deploy_user
+#  requires :deploy_user
   @user = USER
   file '/etc/sudoers.d/deploy', :contents => render('deploy.conf') do
     post :install, 'chmod 0400 /etc/sudoers.d/deploy'
@@ -79,22 +85,22 @@ package :no_ssh_password_login do
 end
 
 package :install_logwatch do
-  apt 'logwatch'
+  yum 'logwatch'
 
-  verify { has_apt 'logwatch'}
+  verify { has_yum 'logwatch'}
 end
 
 package :configure_logwatch_mail do
   requires :install_logwatch
-  replace_text '/usr/sbin/logwatch --output mail', "/usr/sbin/logwatch --mailto #{ADMIN_EMAIL} --detail high", '/etc/cron.daily/00logwatch'
+  replace_text '/usr/sbin/logwatch --output mail', "/usr/sbin/logwatch --mailto #{ADMIN_EMAIL} --detail high", '/etc/cron.daily/0logwatch'
 
-  verify { file_contains '/etc/cron.daily/00logwatch', "/usr/sbin/logwatch --mailto #{ADMIN_EMAIL} --detail high"}
+  verify { file_contains '/etc/cron.daily/0logwatch', "/usr/sbin/logwatch --mailto #{ADMIN_EMAIL} --detail high"}
 end
 
 package :install_iptables_persistent do
-  apt 'iptables-persistent'
+  yum 'iptables-persistent'
 
-  verify { has_apt 'iptables-persistent' }
+  verify { has_yum 'iptables-persistent' }
 end
 
 package :install_iptables_rules_v4 do
@@ -107,28 +113,33 @@ package :install_iptables_rules_v4 do
   verify { has_file '/etc/iptables/rules.v4'}
 end
 
-package :install_iptables_rules_v6desde  do
+package :install_iptables_rules_v6 do
   iptables_dir = '/etc/iptables'
   file '/etc/iptables/rules.v6', :content => File.read('files/iptables.rules.v6') do
     pre :install, "test ! -d #{iptables_dir} && sudo mkdir -p #{iptables_dir}; echo done"
-    post :install, "iptables-restore < /etc/iptables/rules.v6"
+    post :install, "ip6tables-restore < /etc/iptables/rules.v6"
   end
 
   verify { has_file '/etc/iptables/rules.v6'}
 end
 
 policy :hello_world, :roles => :linode do
+  requires :install_epel_release
   requires :install_fail2ban
   requires :deploy_user
   requires :deploy_ssh_keys
   requires :passwordless_sudo
   requires :no_ssh_root_login
-  requires :no_ssh_password_login
+#  requires :no_ssh_password_login
   requires :install_logwatch
-  requires :configure_logwatch_mail
-  requires :install_iptables_persistent
+#  requires :configure_logwatch_mail
+#  requires :install_iptables_persistent
   requires :install_iptables_rules_v4
   requires :install_iptables_rules_v6
+end
+
+policy :coturn, :roles => :linode do
+#  requires :install_coturn
 end
 
 deployment do
